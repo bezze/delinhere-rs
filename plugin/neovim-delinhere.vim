@@ -25,8 +25,7 @@ let s:YanArHere = 'YanArHere'
 let s:Test = 'Test'
 
 " The path to the binary that was created out of 'cargo build' or 'cargo build --release". This will generally be 'target/release/name'
-" let s:bin = '/home/jason/Others/gits/delinhere-rs/target/debug/delinhere-rs'
-let s:bin = '/home/teseo/Other/gits/delinhere-rs/target/debug/delinhere-rs'
+let s:bin = $HOME . '/.local/share/nvim/plugged/delinhere-rs/target/debug/delinhere-rs'
 
 function! s:configureCommands()
     " command! -nargs=+ Add :call s:add(<f-args>)
