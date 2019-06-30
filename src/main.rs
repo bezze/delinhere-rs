@@ -8,48 +8,10 @@ use std::fmt::Debug;
 mod utils;
 use utils::*;
 use utils::{Log, Logger, Pos};
+use utils::BPairs;
 
 mod args;
 use args::Args;
-
-#[derive(Debug, Clone)]
-enum BPairs {
-    Brack,
-    Paren,
-    Curly
-}
-
-impl BPairs{
-
-    fn to_string_pair(&self) -> (String, String) {
-        match &self {
-            BPairs::Brack   =>  (String::from(r"\["), String::from(r"\]")),
-            BPairs::Paren   =>  (String::from("("), String::from(")")),
-            BPairs::Curly   =>  (String::from("{"), String::from("}")),
-        }
-    }
-
-    fn to_simple_string_open(&self) -> String {
-        match &self {
-            BPairs::Brack   =>  String::from("["),
-            BPairs::Paren   =>  String::from("("),
-            BPairs::Curly   =>  String::from("{")
-        }
-    }
-
-    fn to_simple_string_close(&self) -> String {
-        match &self {
-            BPairs::Brack   =>  String::from("]"),
-            BPairs::Paren   =>  String::from(")"),
-            BPairs::Curly   =>  String::from("}")
-        }
-    }
-
-
-    fn array() -> [BPairs;3] {
-        [BPairs::Brack, BPairs::Paren, BPairs::Curly]
-    }
-}
 
 struct App {
     logger: Option<Log>
@@ -93,7 +55,12 @@ impl App {
             let (v1, v2) = (array[0].clone(), array[1].clone());
             let (v1, v2) = (v1.as_u64(), v2.as_u64());
             if let (Some(o1),Some(o2)) = (v1, v2) {
-                Some((o1, o2))
+                if o1 != 0u64 && o2 != 0u64 {
+                    Some((o1, o2))
+                }
+                else {
+                    None
+                }
             }
             else {
                 None
@@ -104,52 +71,72 @@ impl App {
         }
     }
 
-    fn find_closest_bpair(&mut self, nvim: &mut Neovim) -> (BPairs, Pos) {
+    fn searchpairpos(nvim: &mut Neovim, args: Vec<Value>) -> Option<Pos> {
 
-        let mut dual: (BPairs, Pos) = (BPairs::Brack, Pos::new(0,0));
+        let search = nvim.call_function("searchpairpos", args);
+        match search {
+            Ok(array) => {
+                if let Some((line, col)) = Self::_unwrap_array_result_into_tuple(array) {
+                    Some(Pos::new(line,col))
+                }
+                else {
+                    None
+                }
+            },
+            //TODO: We discard call errors for now. We should handle them
+            Err(_error) => {
+                None
+            },
+        }
+
+    }
+
+    fn find_closest_bpair(&mut self, nvim: &mut Neovim) -> Option<(BPairs, Pos)> {
+
+        // let mut dual: Option<(BPairs, Pos)> = Some((BPairs::Brack, Pos::new(0,0)));
+        let mut dual: Option<(BPairs, Pos)> = None;
 
         for bpair in BPairs::array().iter() {
             let args: Vec<Value> = App::_search_bracket_pair_backwards_arg(bpair);
-            let search = nvim.call_function("searchpairpos", args);
-
-            //TODO: We discard call errors for now. We should handle them
-            let (line, col) = search.ok()
-                .and_then(|array| Self::_unwrap_array_result_into_tuple(array))
-                .unwrap_or((0u64,0u64));
-
             // TODO: Here we never check if the closest is a valid bracket, we could potentially
             // find unbalanced bpairs.
-            dual = {
-                let candidate = Pos::new(line, col);
-                if { dual.1 < candidate } { (bpair.clone(), candidate) } else { dual }
-            };
+            let search = App::searchpairpos(nvim, args);
+            if let Some(pos) = search {
+                dual = if let Some((old_bpair, old_pos)) = dual {
+                    if pos > old_pos {
+                        Some((bpair.clone(), pos))
+                    }
+                    else {
+                        Some((old_bpair, old_pos))
+                    }
+                }
+                else {
+                    Some((bpair.clone(), pos))
+                }
+            }
         }
 
         self.log(&format!("Closest {:?}\n", dual));
-
         dual
 
     }
 
     fn find_args(&mut self, nvim: &mut Neovim) -> Vec<String> {
-        let (bpair, bpos) = self.find_closest_bpair(nvim);
-        let searchpairpos_args: Vec<Value> = App::_search_bracket_pair_forwards_arg(&bpair);
-        let search = nvim.call_function("searchpairpos", searchpairpos_args);
-        self.log(&format!("search {:?}\n", search));
-        let (line, col) = search.ok()
-            .and_then(|array| Self::_unwrap_array_result_into_tuple(array))
-            .unwrap_or((0u64,0u64));
-        let epos = Pos::new(line, col);
-        // let getline_args = vec![Value::from(pos.line()), Value::from(line)];
-        self.log(&format!("line {} col {}\n", line, col));
-        self.log(&format!("from {} to {}\n", bpos.line(), line));
-        let getline_args = vec![Value::from(bpos.line()), Value::from(line)];
-        let lines = nvim.call_function("getline", getline_args);
+        if let Some((bpair, bpos)) = self.find_closest_bpair(nvim) {
+            let searchpairpos_args: Vec<Value> = App::_search_bracket_pair_forwards_arg(&bpair);
+            let search = App::searchpairpos(nvim, searchpairpos_args);
+            self.log(&format!("search {:?}\n", search));
 
-        let parse = Args::unwrap_raw_lines(lines.as_ref().unwrap());
-        let all = Args::parse_args(&parse, bpos, epos);
-
-        self.log(&format!("all {:?}\n", all));
+            if let Some(epos) = search {
+                let (line, col) = epos.get();
+                self.log(&format!("line {} col {}\n", line, col));
+                self.log(&format!("from {} to {}\n", bpos.line(), line));
+                let getline_args = vec![Value::from(bpos.line()), Value::from(line)];
+                let lines = nvim.call_function("getline", getline_args);
+                let args = Args::new(lines.unwrap(), bpos, epos, &mut self.logger);
+                self.log(&format!("all {:?}\n", args));
+            }
+        }
         vec![String::new()]
     }
 
@@ -174,57 +161,46 @@ impl App {
         format!("{}{}{}", verb, adverb, here)
     }
 
-    fn call_dih_w_normal(nvim: &mut Neovim, verb: &str, adverb: &str, here: &str) {
-        let cmd = Self::_verb_adverb_here(verb, adverb, here);
-        nvim.command(&format!("normal! {}", cmd));
-    }
-
-    fn call_dih_w_feedkeys(&mut self, nvim: &mut Neovim, verb: &str, adverb: &str, here: &str) {
-        let cmd = Self::_verb_adverb_here(verb, adverb, here);
-        let args = vec![Value::from(cmd), Value::from("n")];
-        if let Err(err) = nvim.call_function("feedkeys", args) {
-            self.log_err("call_dih_w_feedkeys ", err)
+    fn call_dih_w_feedkeys(&mut self, nvim: &mut Neovim, verb: &str, adverb: &str) {
+        if let Some((bpair, _pos)) = self.find_closest_bpair(nvim) {
+            let cmd = Self::_verb_adverb_here(verb, adverb, &bpair.to_simple_string_open());
+            let args = vec![Value::from(cmd), Value::from("n")];
+            if let Err(err) = nvim.call_function("feedkeys", args) {
+                self.log_err("call_dih_w_feedkeys ", err)
+            }
         }
     }
 
     fn delete_in_here(&mut self, nvim: &mut Neovim) {
-        let (bpair, _pos) = self.find_closest_bpair(nvim);
-        self.call_dih_w_feedkeys(nvim, "d", "i", &bpair.to_simple_string_open());
+        self.call_dih_w_feedkeys(nvim, "d", "i");
     }
 
     fn delete_around_here(&mut self, nvim: &mut Neovim) {
-        let (bpair, _pos) = self.find_closest_bpair(nvim);
-        self.call_dih_w_feedkeys(nvim, "d", "a", &bpair.to_simple_string_open());
+        self.call_dih_w_feedkeys(nvim, "d", "a");
     }
 
     fn change_in_here(&mut self, nvim: &mut Neovim) {
-        let (bpair, _pos) = self.find_closest_bpair(nvim);
-        self.call_dih_w_feedkeys(nvim, "c", "i", &bpair.to_simple_string_open());
+        self.call_dih_w_feedkeys(nvim, "c", "i");
     }
 
     fn change_around_here(&mut self, nvim: &mut Neovim) {
-        let (bpair, _pos) = self.find_closest_bpair(nvim);
-        self.call_dih_w_feedkeys(nvim, "c", "a", &bpair.to_simple_string_open());
+        self.call_dih_w_feedkeys(nvim, "c", "a");
     }
 
     fn select_in_here(&mut self, nvim: &mut Neovim) {
-        let (bpair, _pos) = self.find_closest_bpair(nvim);
-        self.call_dih_w_feedkeys(nvim, "v", "i", &bpair.to_simple_string_open());
+        self.call_dih_w_feedkeys(nvim, "v", "i");
     }
 
     fn select_around_here(&mut self, nvim: &mut Neovim) {
-        let (bpair, _pos) = self.find_closest_bpair(nvim);
-        self.call_dih_w_feedkeys(nvim, "v", "a", &bpair.to_simple_string_open());
+        self.call_dih_w_feedkeys(nvim, "v", "a");
     }
 
     fn yank_in_here(&mut self, nvim: &mut Neovim) {
-        let (bpair, _pos) = self.find_closest_bpair(nvim);
-        self.call_dih_w_feedkeys(nvim, "y", "i", &bpair.to_simple_string_open());
+        self.call_dih_w_feedkeys(nvim, "y", "i");
     }
 
     fn yank_around_here(&mut self, nvim: &mut Neovim) {
-        let (bpair, _pos) = self.find_closest_bpair(nvim);
-        self.call_dih_w_feedkeys(nvim, "y", "a", &bpair.to_simple_string_open());
+        self.call_dih_w_feedkeys(nvim, "y", "a");
     }
 
 }

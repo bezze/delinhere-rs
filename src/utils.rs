@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use std::io::prelude::*;
 use std::fs::File;
 
-#[derive(PartialOrd, Ord, Debug)]
+#[derive(PartialOrd, Ord, Debug, Clone, Copy)]
 pub struct Pos {
     line: u64,
     col: u64
@@ -24,6 +24,10 @@ impl Pos {
 
     pub fn get(&self) -> (u64, u64) {
         (self.line, self.col)
+    }
+
+    fn to_char_index(&self) -> (u64, u64) {
+        (self.line-1, self.col-1)
     }
 
 }
@@ -50,6 +54,47 @@ impl<'a> PartialOrd<&'a Pos> for Pos {
 }
 
 
+#[derive(Debug, Clone)]
+pub enum BPairs {
+    Brack,
+    Paren,
+    Curly
+}
+
+impl BPairs{
+
+    pub fn to_string_pair(&self) -> (String, String) {
+        match &self {
+            BPairs::Brack   =>  (String::from(r"\["), String::from(r"\]")),
+            BPairs::Paren   =>  (String::from("("), String::from(")")),
+            BPairs::Curly   =>  (String::from("{"), String::from("}")),
+        }
+    }
+
+    pub fn to_simple_string_open(&self) -> String {
+        match &self {
+            BPairs::Brack   =>  String::from("["),
+            BPairs::Paren   =>  String::from("("),
+            BPairs::Curly   =>  String::from("{")
+        }
+    }
+
+    pub fn to_simple_string_close(&self) -> String {
+        match &self {
+            BPairs::Brack   =>  String::from("]"),
+            BPairs::Paren   =>  String::from(")"),
+            BPairs::Curly   =>  String::from("}")
+        }
+    }
+
+
+    pub fn array() -> [BPairs;3] {
+        [BPairs::Brack, BPairs::Paren, BPairs::Curly]
+    }
+}
+
+
+#[derive(Debug)]
 pub struct Log {
     fd: File,
 }
