@@ -23,6 +23,7 @@ pub struct Args {
     lines: Vec<Vec<String>>,
     pos_vec: Vec<Pos>,
     args: Vec<String>,
+    counts: Vec<usize>,
     // args: String,
     beg_pos: Pos,
     end_pos: Pos,
@@ -54,12 +55,13 @@ impl Args {
         let pos_vec = Args::find_pos(&lines, beg_pos);
         // let args = Args::parse_args(&lines, beg_pos, end_pos).split(", ").map(|s| s.to_string()).collect();
         if let Some(logger) = ext_logger { logger.log("Inside Args::new\n"); }
-        let args = Args::parse_args(&lines, beg_pos, end_pos, ext_logger);
+        let (args, counts) = Args::parse_args(&lines, beg_pos, end_pos, ext_logger);
 
         Args {
             lines,
             pos_vec,
             args,
+            counts,
             beg_pos,
             end_pos,
             logger: Some(Log::new("/tmp/delinhere_arg.log")),
@@ -117,7 +119,7 @@ impl Args {
         cols.enumerate().map(|(i, n)| Pos::new(i as u64 + beg_pos.line(), n as u64 +1)).collect()
     }
 
-    fn reprocessed_args(arg_chars: &Vec<String>, ext_logger: &mut Option<Log>) -> Vec<String> {
+    fn reprocessed_args(arg_chars: &Vec<String>, ext_logger: &mut Option<Log>) -> (Vec<String>, Vec<usize>) {
         // arg_chars contains every character (as a String) from the starting bracket pair to the
         // end bracket pair.
         if let Some(logger) = ext_logger { logger.log("Inside Args::reprocessed_args\n"); }
@@ -143,7 +145,7 @@ impl Args {
             bufs.push(last);
         }
 
-        fn add_char_2_arg(arg: &mut String, chars: &str) { 
+        fn add_char_2_arg(arg: &mut String, chars: &str) {
             arg.push_str(chars)
         }
 
@@ -151,7 +153,7 @@ impl Args {
             add_char_2_last_buf(bufs, chars)
         }
 
-        fn add_buf_2_arg(arg: &mut String, chars: &str) { 
+        fn add_buf_2_arg(arg: &mut String, chars: &str) {
             add_char_2_arg(arg, chars)
         }
 
@@ -182,6 +184,8 @@ impl Args {
         let mut parsed_args: Vec<String> = Vec::new();
         let mut curr_arg: String = String::new();
         let mut bufs: Vec<(BPairs, String)> = Vec::new();
+        let mut count_args: Vec<usize> = Vec::new();
+        let mut count: usize = 1;
 
         for i in 0..N {
             if let Some(logger) = ext_logger { logger.log(&format!("i: {}\n", i)); }
@@ -199,7 +203,16 @@ impl Args {
                         // new arg
                         if let Some(logger) = ext_logger { logger.log("New Arg\n"); }
                         parsed_args.push(curr_arg);
+                        count += 1;
                         curr_arg = String::new();
+                    }
+                    else if *ch == "\n" {
+                        if let Some(logger) = ext_logger { logger.log("Found newline!\n"); }
+                        if curr_arg.trim() == "" {
+                            count -= 1;
+                        }
+                        count_args.push(count);
+                        count = 1;
                     }
                     else {
                         if let Some(logger) = ext_logger { logger.log(&format!("Adding char {}!\n", ch)); }
@@ -225,37 +238,37 @@ impl Args {
             }
         }
 
+        // Collecting residual bufs.
+        for buf in bufs.iter() {
+            let (_, chars) = buf;
+            curr_arg.push_str(&chars)
+        }
+
         // add last arg
         if curr_arg != "" {
             parsed_args.push(curr_arg);
         }
 
+        // adding last count
+        if arg_chars[N-1] != "\n" {
+            count_args.push(count);
+        }
+
         parsed_args = parsed_args.iter().map(|s| s.trim().to_string()).collect();
 
         if let Some(logger) = ext_logger { logger.log(&format!("Finally! {:?}\n", parsed_args)); }
-        parsed_args
-
+        (parsed_args, count_args)
     }
 
-    pub fn parse_args(lines: &Vec<Vec<String>>, beg_pos: Pos, end_pos: Pos, ext_logger: &mut Option<Log>) -> Vec<String> {
+    pub fn parse_args(lines: &Vec<Vec<String>>, beg_pos: Pos, end_pos: Pos, ext_logger: &mut Option<Log>) -> (Vec<String>, Vec<usize>) {
         if let Some(logger) = ext_logger { logger.log("Inside Args::parse_args\n"); }
         let n_lines = lines.len();
         let (_bl, bc) = beg_pos.get();
         let (_el, ec) = end_pos.get();
 
-        fn slice_beg<'a>(string_vec: &'a [String], bc: u64) -> &'a [String] {
-            let bc = bc as usize - 1; // to index
-            &string_vec[bc+1..]
-        }
-
-        fn slice_end<'a>(string_vec: &'a [String], ec: u64) -> &'a [String] {
-            let ec = ec as usize - 1; // to index
-            &string_vec[..ec]
-        }
-
         let mut print_str = String::new();
         let mut only_args = Vec::new();
-        // let mut args_as_chars = Vec::new();
+
         for (i, vs) in lines.iter().enumerate() {
             let mut slice = &vs[..];
 
@@ -273,6 +286,7 @@ impl Args {
             for stuff in slice {
                 only_args.push(stuff.clone())
             }
+            only_args.push("\n".to_string());
 
             print_str.push_str(
                 &format!("{:?}\n", slice)
@@ -280,11 +294,16 @@ impl Args {
 
         }
 
-        // let only_args = only_args.join("");
         let reprocessed_args = Args::reprocessed_args(&only_args, ext_logger);
         reprocessed_args
 
-        // format!("t := \n{:?}", reprocessed_args)//.join("0\n"))
+    }
+
+    pub fn cycle_args(&mut self) {
+    }
+
+    pub fn write_args(&self) -> String {
+        String::new()
     }
 
 }
