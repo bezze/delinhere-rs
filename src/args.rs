@@ -17,16 +17,35 @@ use unicode_segmentation::UnicodeSegmentation;
 /// 81      |            ^------- cols[2] = 20
 /// ..      ---- cols[1] = 7
 ///
+/// lines: ...
+/// pos_vec: [(78, 3), (79, 7), (80, 20)]
+/// args: [arg1, arg2, arg3,| arg4, arg5, arg6, arg7, arg8, arg9,| arg10, arg11]
+///         0      1     2      0     1     2     3     4     5      0      1
+///         0      1     2      3     4     5     6     7     8      9      10
+///                     N=3                                 N=9     
+///     0 .. 3
+///     3 .. 3+6
+///     9 .. 9+2
+/// counts: [3, 6, 2]
+/// beg_pos: (78, 6)
+/// end_pos: (80, 32)
 
+/// lines: Vec<Vec<String>> -> each string is actually a unicode char. The outer vec are the lines
+/// pos_vec: Vec<Pos>, -> the Pos of the first non-whitespace char in each line
+/// args: Vec<String>, -> a curated list of args
+/// counts: Vec<usize>, -> the number of arguments per line.
+/// beg_pos: Pos, -> the starting point of the bpair
+/// end_pos: Pos, -> the ending point of the bpair
+/// logger: Option<Log>,
 #[derive(Debug)]
 pub struct Args {
     lines: Vec<Vec<String>>,
     pos_vec: Vec<Pos>,
     args: Vec<String>,
     counts: Vec<usize>,
-    // args: String,
     beg_pos: Pos,
     end_pos: Pos,
+    debug: Vec<usize>,
     logger: Option<Log>,
 }
 
@@ -55,9 +74,15 @@ impl Args {
         let pos_vec = Args::find_pos(&lines, beg_pos);
         // let args = Args::parse_args(&lines, beg_pos, end_pos).split(", ").map(|s| s.to_string()).collect();
         if let Some(logger) = ext_logger { logger.log("Inside Args::new\n"); }
-        let (args, counts) = Args::parse_args(&lines, beg_pos, end_pos, ext_logger);
+        let (args, counts) = Args::parse_args(&lines, beg_pos,
+                                              end_pos, ext_logger);
+
+        // assert_eq![pos_vec.len(), lines_vec.len()];
+        // assert_eq![lines_vec.len(), lines.len()];
+        // assert_eq![lines.len(), counts.len()];
 
         Args {
+            debug: vec![pos_vec.len(), lines_vec.len(), lines.len(), counts.len()],
             lines,
             pos_vec,
             args,
@@ -105,6 +130,7 @@ impl Args {
         sel
     }
 
+    /// Find first non-whitespace character position of every line and then return the Pos vector.
     fn find_pos(parsed_lines: &Vec<Vec<String>>, beg_pos: Pos) -> Vec<Pos> {
 
         let cols = parsed_lines.iter().map(|vs| {
@@ -302,8 +328,62 @@ impl Args {
     pub fn cycle_args(&mut self) {
     }
 
-    pub fn write_args(&self) -> String {
-        String::new()
+    fn first_line(&self) -> String {
+
+        let n_args: usize = self.counts[0];
+        let first_pos = 0;
+        let last_pos = first_pos + self.counts[0];
+
+        let args = self.args[first_pos..last_pos].join(", ");
+        args
+
     }
+
+    fn last_line(&self) -> String {
+
+        let n = self.lines.len();
+
+        let n_args: usize = self.counts[n-1];
+        let first_pos = self.counts[0..n].iter().sum::<usize>();
+        let last_pos = first_pos + self.counts[n-1];
+
+        let args = self.args[first_pos..last_pos].join(", ");
+        args
+
+    }
+
+    fn reconstruct_line(&self, line_number: usize) -> String {
+        let whitepsace_slots: u64 = self.pos_vec[line_number].col();
+        let first_pos = self.counts[0..line_number].iter().sum::<usize>();
+        let last_pos = first_pos + self.counts[line_number];
+
+        let args = &self.args[first_pos..last_pos].join(", ");
+
+        let mut line = String::new();
+
+        for _i in 0 .. (whitepsace_slots-1) { line.push_str(" ") }
+
+        line.push_str(args);
+
+        line
+
+    }
+
+    pub fn reconstruct_args(&mut self) -> String {
+
+        let mut stringified_args = Vec::new();
+        if self.first_line() != "" {
+            stringified_args.push(self.first_line());
+        }
+        if self.lines.len() >= 2 {
+            for i in 1 .. self.lines.len() {
+                let recon = self.reconstruct_line(i);
+                self.log(&format!("line {} {}\n",i , recon));
+                stringified_args.push(recon)
+            }
+        }
+        stringified_args.join(",\n")
+    }
+
 
 }

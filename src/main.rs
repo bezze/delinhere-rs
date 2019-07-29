@@ -121,7 +121,8 @@ impl App {
 
     }
 
-    fn find_args(&mut self, nvim: &mut Neovim) -> Vec<String> {
+    fn find_args(&mut self, nvim: &mut Neovim) -> Option<args::Args> {
+
         if let Some((bpair, bpos)) = self.find_closest_bpair(nvim) {
             let searchpairpos_args: Vec<Value> = App::_search_bracket_pair_forwards_arg(&bpair);
             let search = App::searchpairpos(nvim, searchpairpos_args);
@@ -133,16 +134,24 @@ impl App {
                 self.log(&format!("from {} to {}\n", bpos.line(), line));
                 let getline_args = vec![Value::from(bpos.line()), Value::from(line)];
                 let lines = nvim.call_function("getline", getline_args);
-                let args = Args::new(lines.unwrap(), bpos, epos, &mut self.logger);
+                let mut args = Args::new(lines.unwrap(), bpos, epos, &mut self.logger);
                 self.log(&format!("all {:?}\n", args));
-            }
-        }
-        vec![String::new()]
+                Some(args)
+            } else { None }
+        } else { None }
+
     }
 
     fn test(&mut self, nvim: &mut Neovim, values: Vec<Value>) {
         self.log("Inside test method\n");
-        self.find_args(nvim);
+
+        let args = self.find_args(nvim);
+        if let Some(mut a) = args {
+            let arg_string = a.reconstruct_args();
+            self.delete_in_here(nvim);
+            self.write_in_here(nvim, arg_string);
+        }
+
     }
 
     fn _test(&mut self, values: Vec<Value>) -> String {
@@ -155,6 +164,30 @@ impl App {
             }
         }
         return "dummy".to_string()
+    }
+
+    fn write_in_here(&mut self, nvim: &mut Neovim, string: String) {
+
+        let setregargs = vec![
+            Value::from("\"\""),
+            Value::from(string),
+            Value::from("n")
+        ];
+
+        if let Err(err) = nvim.call_function("setreg", setregargs) {
+            self.log_err("setreg ", err)
+        }
+
+        let feedargs = vec![
+            Value::from("\"\"P"),
+            Value::from("n")
+        ];
+
+        if let Err(err) = nvim.call_function("feedkeys", feedargs) {
+            self.log_err("feedkeys ", err)
+        }
+
+
     }
 
     fn _verb_adverb_here(verb: &str, adverb: &str, here: &str) -> String {
