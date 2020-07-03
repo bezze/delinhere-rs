@@ -93,7 +93,6 @@ impl App {
 
     fn find_closest_bpair(&mut self, nvim: &mut Neovim) -> Option<(BPairs, Pos)> {
 
-        // let mut dual: Option<(BPairs, Pos)> = Some((BPairs::Brack, Pos::new(0,0)));
         let mut dual: Option<(BPairs, Pos)> = None;
 
         for bpair in BPairs::array().iter() {
@@ -143,6 +142,118 @@ impl App {
     }
 
     fn test(&mut self, nvim: &mut Neovim, values: Vec<Value>) {
+
+        let args = self.find_args(nvim);
+        self.log("After find_args\n");
+        let string = args.map_or(String::new(), |mut a|{
+            self.log("Before fuckup\n");
+            a.reconstruct_args()
+        });
+        // let string = String::from("hola");
+
+        self.log(&format!("reconstruct := {:?}\n", &string));
+
+        if let Some((bpair, _pos)) = self.find_closest_bpair(nvim) {
+
+            let cmd = Self::_verb_adverb_here("d", "i", &bpair.to_simple_string_open());
+            let dihargs = Value::from(vec!(
+                    Value::from(cmd),
+                    Value::from("n"),
+                    Value::from(false)
+            ));
+
+            let call_dih = Value::from(vec![
+                                       Value::from("nvim_feedkeys"), dihargs
+            ]);
+
+            let setregargs = Value::from(vec!(
+                Value::from("-"),
+                Value::from(string),
+            ));
+
+            let call_wrapper = Value::from(vec![Value::from("setreg"), setregargs]);
+
+            let call_setreg = Value::from(vec!(
+                    Value::from("nvim_call_function"), call_wrapper
+
+            ));
+
+            let feedargs_2 = Value::from(vec!(
+                    Value::from("\"-P"),
+                    Value::from("n"),
+                    Value::from(false)
+            ));
+
+
+            let call_write = Value::from(vec!(
+                    Value::from("nvim_feedkeys"), feedargs_2
+            ));
+
+            let atomic_call = vec![call_dih, call_setreg, call_write];
+
+            self.log(&format!("atomic_call := {:?}\n", &atomic_call));
+
+            let result = nvim.call_atomic(atomic_call);
+
+            self.log(&format!("result := {:?}\n", &result));
+
+        }
+
+    }
+
+    fn test_3(&mut self, nvim: &mut Neovim, values: Vec<Value>) {
+
+        let string = String::from("This is a test string");
+
+        if let Some((bpair, _pos)) = self.find_closest_bpair(nvim) {
+
+            let cmd = Self::_verb_adverb_here("d", "i", &bpair.to_simple_string_open());
+            let dihargs = Value::from(vec!(
+                    Value::from(cmd),
+                    Value::from("n"),
+                    Value::from(false)
+            ));
+
+            let call_dih = Value::from(vec![
+                                       Value::from("nvim_feedkeys"), dihargs
+            ]);
+
+            let setregargs = Value::from(vec!(
+                Value::from("\"j"),
+                Value::from(string),
+            ));
+
+            let call_wrapper = Value::from(vec![Value::from("setreg"), setregargs]);
+
+            let call_setreg = Value::from(vec!(
+                    Value::from("nvim_call_function"), call_wrapper
+
+            ));
+
+            let feedargs_2 = Value::from(vec!(
+                    Value::from("\"jP"),
+                    Value::from("n"),
+                    Value::from(false)
+            ));
+
+
+            let call_write = Value::from(vec!(
+                    Value::from("nvim_feedkeys"), feedargs_2
+            ));
+
+            let atomic_call = vec![call_setreg, call_dih, call_write];
+
+            self.log(&format!("atomic_call := {:?}\n", &atomic_call));
+
+            let result = nvim.call_atomic(atomic_call);
+
+            self.log(&format!("result := {:?}\n", &result));
+
+        }
+
+    }
+
+    fn test_2(&mut self, nvim: &mut Neovim, values: Vec<Value>) {
         self.log("Inside test method\n");
 
         let args = self.find_args(nvim);
@@ -164,6 +275,17 @@ impl App {
             }
         }
         return "dummy".to_string()
+    }
+
+    fn _dih_write(&mut self, nvim: &mut Neovim, verb: &str, adverb: &str) {
+        if let Some((bpair, _pos)) = self.find_closest_bpair(nvim) {
+            let cmd = Self::_verb_adverb_here(verb, adverb, &bpair.to_simple_string_open());
+            let args = vec![Value::from(cmd),
+            Value::from("n")];
+            if let Err(err) = nvim.call_function("feedkeys", args) {
+                self.log_err("call_dih_w_feedkeys ", err)
+            }
+        }
     }
 
     fn write_in_here(&mut self, nvim: &mut Neovim, string: String) {

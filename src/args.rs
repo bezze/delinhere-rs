@@ -72,7 +72,6 @@ impl Args {
         let lines_vec = Args::unwrap_raw_lines(&raw_lines);
         let lines: Vec<Vec<String>>  = Args::parse_lines(&lines_vec);
         let pos_vec = Args::find_pos(&lines, beg_pos);
-        // let args = Args::parse_args(&lines, beg_pos, end_pos).split(", ").map(|s| s.to_string()).collect();
         if let Some(logger) = ext_logger { logger.log("Inside Args::new\n"); }
         let (args, counts) = Args::parse_args(&lines, beg_pos,
                                               end_pos, ext_logger);
@@ -145,9 +144,39 @@ impl Args {
         cols.enumerate().map(|(i, n)| Pos::new(i as u64 + beg_pos.line(), n as u64 +1)).collect()
     }
 
+    /// Parsing possibilities
+    /// 1.
+    /// (a)\n
+    ///
+    /// 2.
+    /// (a, b, c)\n
+    ///
+    /// 3.
+    /// (a, b,\n
+    /// c)\n
+    ///
+    /// 4.
+    ///    (a, b,\n
+    ///     c\n
+    ///    )\n
+    ///
+    /// 5.
+    ///    (a, b,\n
+    ///     c\n
+    /// )\n
+    ///
+    /// 6.
+    ///    (a, b,\n
+    ///     c\n
+    /// \n
+    /// \n
+    ///    )\n
+    ///
+    ///
     fn reprocessed_args(arg_chars: &Vec<String>, ext_logger: &mut Option<Log>) -> (Vec<String>, Vec<usize>) {
         // arg_chars contains every character (as a String) from the starting bracket pair to the
         // end bracket pair.
+        // if let Some(logger) = ext_logger { logger.log("Inside Args::reprocessed_args\n"); }
         if let Some(logger) = ext_logger { logger.log("Inside Args::reprocessed_args\n"); }
 
         let N = arg_chars.len();
@@ -213,6 +242,7 @@ impl Args {
         let mut count_args: Vec<usize> = Vec::new();
         let mut count: usize = 1;
 
+        if let Some(logger) = ext_logger { logger.log(&format!("arg_cahrs := {:?}\n", arg_chars)); }
         for i in 0..N {
             if let Some(logger) = ext_logger { logger.log(&format!("i: {}\n", i)); }
             let ch = &arg_chars[i];
@@ -233,15 +263,16 @@ impl Args {
                         curr_arg = String::new();
                     }
                     else if *ch == "\n" {
-                        if let Some(logger) = ext_logger { logger.log("Found newline!\n"); }
+                        // If we find ourselves in numbre 6, we discount
                         if curr_arg.trim() == "" {
                             count -= 1;
                         }
+                        if let Some(logger) = ext_logger { logger.log(&format!("Found newline! count:= {}\n", count)); }
                         count_args.push(count);
                         count = 1;
                     }
                     else {
-                        if let Some(logger) = ext_logger { logger.log(&format!("Adding char {}!\n", ch)); }
+                        if let Some(logger) = ext_logger { logger.log(&format!("Adding char '{}'\n", ch)); }
                         add_char_2_arg(&mut curr_arg, ch)
                     }
 
@@ -275,8 +306,13 @@ impl Args {
             parsed_args.push(curr_arg);
         }
 
-        // adding last count
+        // adding last count if we are not number 6
         if arg_chars[N-1] != "\n" {
+            if let Some(logger) = ext_logger { logger.log(&format!("Last 5 chars:= {:?}", &arg_chars[N-5..])); }
+            // If the last char is a whitespace then we are in case 4
+            if arg_chars[N-1] == " " {
+                count -= 1
+            }
             count_args.push(count);
         }
 
@@ -305,14 +341,18 @@ impl Args {
                 slice = &vs[bc as usize ..]
             }
             else if i == n_lines -1 {
-                slice = &vs[.. ec as usize -1]
+                slice = &vs[.. ec as usize -1];
+                if let Some(logger) = ext_logger { logger.log(&format!("Last line, {:?}\n", slice)); }
             }
 
             // only_args.push(slice.to_vec().join(""));
             for stuff in slice {
                 only_args.push(stuff.clone())
             }
-            only_args.push("\n".to_string());
+
+            if i < n_lines -1 {
+                only_args.push("\n".to_string());
+            }
 
             print_str.push_str(
                 &format!("{:?}\n", slice)
@@ -352,10 +392,13 @@ impl Args {
 
     }
 
-    fn reconstruct_line(&self, line_number: usize) -> String {
+    fn reconstruct_line(&mut self, line_number: usize) -> String {
+
         let whitepsace_slots: u64 = self.pos_vec[line_number].col();
+
         let first_pos = self.counts[0..line_number].iter().sum::<usize>();
         let last_pos = first_pos + self.counts[line_number];
+        self.log(&format!("first {:?} last {:?}\n", first_pos, last_pos));
 
         let args = &self.args[first_pos..last_pos].join(", ");
 
@@ -372,17 +415,26 @@ impl Args {
     pub fn reconstruct_args(&mut self) -> String {
 
         let mut stringified_args = Vec::new();
+        self.log("Starting reconstruction...\n");
+
         if self.first_line() != "" {
+            self.log(&format!("single line 0 {}\n", self.first_line()));
             stringified_args.push(self.first_line());
         }
+
         if self.lines.len() >= 2 {
             for i in 1 .. self.lines.len() {
                 let recon = self.reconstruct_line(i);
-                self.log(&format!("line {} {}\n",i , recon));
+                self.log(&format!("line i({}) '{}'\n",i , recon));
                 stringified_args.push(recon)
             }
         }
-        stringified_args.join(",\n")
+
+        let s = stringified_args.join(",\n");
+        self.log(&format!("stringified {}\n\n", s));
+        // stringified_args.join(",\n")
+        s
+
     }
 
 
